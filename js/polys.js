@@ -1,6 +1,6 @@
 
 import {Point, clonePoint, add, sub, mul, rotate, nearby, nearbyScalar, dist} from './primitives.js';
-export {Edge, getNewPolyPointsFromExisting, getNewPolyPointsFromEdge, createPolyFromPointsAndIntegrate
+export {Edge, Polygon, getNewPolyPointsFromExisting, getNewPolyPointsFromEdge, createPolyFromPointsAndIntegrate
 };
 
 function getAngleRemainingAtVertex(newN, p, globEdges) {
