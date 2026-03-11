@@ -6,6 +6,19 @@
 		<link href='css/index.css' rel='stylesheet'>
 	</head>
 	<body>
-		<canvas id='canvas' width='800' height='600' tabindex=0></canvas>
+		<h3>Complete the tessellation!</h3>
+		<p>Select an edge, then press 3 for a triangle, 4 for a square, 6 for a hexagon, or 1 for a dodecagon. Alternatively, use the buttons.</p>
+		<p>Click in the middle of a polygon to delete it.</p>
+		<div id='canvas-and-buttons-div'>
+			<canvas id='canvas' width='800' height='600' tabindex=0></canvas>
+			<div id='buttons'>
+				<button id='k3'>Place Triangle</button><br>
+				<button id='k4'>Place Square</button><br>
+				<button id='k6'>Place Hexagon</button><br>
+				<button id='k1'>Place Dodecagon</button><br>
+				<br>
+				<button id='new'>Regenerate the Tessellation</button><br>
+			</div>
+		</div>
 	</body>
 </html>

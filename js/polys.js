@@ -1,7 +1,69 @@
 
+import {shuffle} from './util.js';
 import {Point, clonePoint, add, sub, mul, rotate, nearby, nearbyScalar, dist} from './primitives.js';
-export {Edge, Polygon, getNewPolyPointsFromExisting, getNewPolyPointsFromEdge, createPolyFromPointsAndIntegrate
-};
+export {Edge, Polygon, getNewPolyPointsFromExisting, getNewPolyPointsFromEdge, createPolyFromPointsAndIntegrate, cullEdgesAndPolysNearVertex, automaticallyGrow};
+
+function automaticallyGrow(globPolys, globEdges) {
+	if (globEdges.length == 1 && globPolys.length == 0) {
+		const ns = [3, 4, 6, 12];
+		shuffle(ns);
+		const n = ns[0];
+		const points = getNewPolyPointsFromEdge(globEdges[0], n, false);
+		createPolyFromPointsAndIntegrate(points, globEdges[0], globPolys, globEdges);
+		return;
+	}
+	// Choose closest edge with < 2 polygons on it
+	let closestDist = Infinity;
+	let closestEdge = null;
+	const center = globEdges[0].points[0];
+	for (let i=0; i<globEdges.length; i++) {
+		const e = globEdges[i];
+		if (e.polys.length == 2) {
+			continue;
+		}
+		const d0 = dist(e.points[0], center);
+		const d1 = dist(e.points[1], center);
+		if (d0 < closestDist) {
+			closestDist = d0;
+			closestEdge = e;
+		}
+		if (d1 < closestDist) {
+			closestDist = d1;
+			closestEdge = e;
+		}
+	}
+	if (closestEdge == null) {
+		throw new Error('Null closest edge');
+	}
+	// We give preference to trying dodecagons since they tend to disappear completely
+	// If all polygons were given equal try weights
+	// If this value is not just right, we instead get a preponderance of dodecagons
+	// If this value is too low (try everything randomly) we get too much backtracking?
+	let ns = null;
+	if (Math.random() > 0.5) {
+		ns = [3, 4, 6, 12];
+		shuffle(ns);
+	} else {
+		ns = [3, 4, 6];
+		shuffle(ns);
+		ns.splice(0,0,12);
+	}
+	// If this doesn't work out we try again in outer loop
+	let succ = false;
+	for (let i=0; i<ns.length; i++) {
+		const n = ns[i];
+		const points = getNewPolyPointsFromExisting(closestEdge.polys[0], closestEdge, n);
+		succ = createPolyFromPointsAndIntegrate(points, closestEdge, globPolys, globEdges);
+		if (succ) {
+			break;
+		}
+	}
+	// Nothing works here so we backtrack
+	if (!succ) {
+		cullEdgesAndPolysNearVertex(closestEdge.points[0], globPolys, globEdges);
+		cullEdgesAndPolysNearVertex(closestEdge.points[1], globPolys, globEdges);
+	}
+}
 
 function getAngleRemainingAtVertex(newN, p, globEdges) {
 	let angle = 0;
@@ -84,6 +146,53 @@ function centerFromPoints(points) {
 	return center;
 }
 
+function cullEdgesAndPolysNearVertex(p, globPolys, globEdges) {
+	const sideLen = dist(globEdges[0].points[0], globEdges[0].points[1]);
+	const remEdges = [];
+	const remPolys = [];
+	const thresh = 1.1*sideLen;
+	for (let i=0; i<globEdges.length; i++) {
+		const e = globEdges[i];
+		// Directly removed edges
+		if (dist(e.points[0], p) < thresh || dist(e.points[1], p) < thresh) {
+			remEdges.push(e);
+			for (let j=0; j<e.polys.length; j++) {
+				remPolys.push(e.polys[j]);
+			}
+		}
+	}
+	// Removed polygons have effects on their edges
+	for (let i=0; i<globEdges.length; i++) {
+		const e = globEdges[i];
+		const polys = [];
+		for (let j=0; j<e.polys.length; j++) {
+			if (!remPolys.includes(e.polys[j])) {
+				polys.push(e.polys[j]);
+			}
+		}
+		if (polys.length == 0) {
+			if (!remEdges.includes(e)) {
+				remEdges.push(e);
+			}
+		} else {
+			e.polys = polys;
+		}
+	}
+	// Actually remove edges and polygons
+	for (let i=0; i<globEdges.length; i++) {
+		if (remEdges.includes(globEdges[i])) {
+			globEdges.splice(i, 1);
+			i--;
+		}
+	}
+	for (let i=0; i<globPolys.length; i++) {
+		if (remPolys.includes(globPolys[i])) {
+			globPolys.splice(i, 1);
+			i--;
+		}
+	}
+}
+
 function createPolyFromPointsAndIntegrate(points, selEdge, globPolys, globEdges) {
 	// Create poly
 	const poly = new Polygon({points});
@@ -92,17 +201,25 @@ function createPolyFromPointsAndIntegrate(points, selEdge, globPolys, globEdges)
 		for (let j=0; j<globPolys.length; j++) {
 			if (globPolys[j].contains(points[i])) {
 				console.log(`Polygon ${globPolys[j].id} contains point`);
-				return;
+				return false;
 			}
 		}
 	}
 	// Check for compatible angle remaining
-	const angleRem0 = getAngleRemainingAtVertex(points.length, selEdge.points[0], globEdges);
-	const angleRem1 = getAngleRemainingAtVertex(points.length, selEdge.points[1], globEdges);
-	const allowed = [0,60,90,120,150,180,210,240,270,300]; 
-	if (!allowed.includes(angleRem0) || !allowed.includes(angleRem1)) {
-		console.log(`Incompatible angle remaining ${angleRem0},${angleRem1}`);
-		return;
+	// When we choose random polys to populate the starting board, we may set selEdge to null
+	// Because we already know the tessellation is correct
+	if (selEdge != null) {
+		const angleRem0 = getAngleRemainingAtVertex(points.length, selEdge.points[0], globEdges);
+		const angleRem1 = getAngleRemainingAtVertex(points.length, selEdge.points[1], globEdges);
+		const allowed = [0,60,90,120,150,180,210,240,270,300]; 
+		if (!allowed.includes(angleRem0)) {
+			console.log(`Incompatible angle remaining ${angleRem0}`);
+			return false;
+		}
+		if (!allowed.includes(angleRem1)) {
+			console.log(`Incompatible angle remaining ${angleRem1}`);
+			return false;
+		}
 	}
 	// Assign edges, creating new ones if necessary
 	for (let i=0; i<poly.points.length; i++) {
@@ -110,10 +227,15 @@ function createPolyFromPointsAndIntegrate(points, selEdge, globPolys, globEdges)
 		const p1 = poly.points[(i+1)%poly.points.length];
 		const temp = new Edge(p0, p1);
 		let found = false;
+		// We sometimes reach edge already has two polygons here
+		// If we do, remove that edge and its polys
 		for (let j=0; j<globEdges.length; j++) {
 			if (temp.equals(globEdges[j])) {
 				if (globEdges[j].polys.length >= 2) {
-					throw new Error("Edge already has two polygons");
+					//console.log(globEdges[j]);
+					console.log("Edge already has two polygons");
+					cullEdgesAndPolysNearVertex(globEdges[j].points[0], globPolys, globEdges);
+					return false;
 				}
 				globEdges[j].polys.push(poly);
 				found = true;
@@ -128,7 +250,75 @@ function createPolyFromPointsAndIntegrate(points, selEdge, globPolys, globEdges)
 		}
 	}
 	globPolys.push(poly);
+	return true;
 }
+
+function getRandomHex() {
+	const digits = ['9','a','b','c','d','e','f'];
+	return digits[Math.floor(Math.random()*digits.length)];
+}
+
+function getRandomFill() {
+	return '#' + getRandomHex() + getRandomHex() + getRandomHex();
+}
+
+function getPointsOnLine(pStart, pEnd, nPoints) {
+	const points = [];
+	for (let i=0; i<nPoints; i++) {
+		const t = i/(nPoints-1);
+		const p = add(mul(pStart, t), mul(pEnd, 1-t));
+		points.push(p);
+	}
+	return points;
+}
+
+/*function getStartAndEndPolys(globPolys, width, height, PAD) {
+	const line0 = getPointsOnLine(Point(PAD,PAD), Point(PAD, height-PAD), 10);
+	const line1 = getPointsOnLine(Point(PAD, height-PAD), Point(width-PAD, height-PAD), 10);
+	const line2 = getPointsOnLine(Point(width-PAD, height-PAD), Point(width-PAD, PAD), 10);
+	const line3 = getPointsOnLine(Point(width-PAD, PAD), Point(PAD, PAD), 10);
+	const lines = line0.concat(line1).concat(line2).concat(line3);
+	const startP = lines[Math.floor(Math.random()*lines.length)];
+	// Get 80% of the distance from startP to the most distant point
+	const dists = [];
+	for (let i=0; i<lines.length; i++) {
+		const d = dist(startP, lines[i]);
+		dists.push({d, p: lines[i]});
+	}
+	dists.sort((a, b) => a.d < b.d);
+	const longDists = dists.slice(0, Math.floor(0.2*dists.length));
+	const endP = longDists[Math.floor(Math.random()*longDists.length)].p;
+	// Convert to polygons
+	let startPoly = null;
+	let endPoly = null;
+	for (let i=0; i<globPolys.length; i++) {
+		if (globPolys[i].contains(startP)) {
+			startPoly = globPolys[i];
+		}
+		if (globPolys[i].contains(endP)) {
+			endPoly = globPolys[i];
+		}
+		if (startPoly != null && endPoly != null) {
+			break;
+		}
+	}
+	return [startPoly, endPoly];
+}*/
+
+// Assuming we have two or more non-adjacent polys and we want to fill in edges from them
+/*function getEdgesFromPolys(globPolys) {
+	const edges = [];
+	for (let i=0; i<globPolys.length; i++) {
+		const points = globPolys[i].points;
+		for (let j=0; j<points.length; j++) {
+			const p0 = points[j];
+			const p1 = points[(j+1)%points.length];
+			edges.push(new Edge(p0, p1));
+			edges.at(-1).polys.push(globPolys[i]);
+		}
+	}
+	return edges;
+}*/
 
 let edgeIdCount = 1;
 
@@ -193,6 +383,7 @@ class Polygon {
 			this.id = polyIdCount;
 			polyIdCount++;
 		}
+		this.fillStyle = getRandomFill();
 	}
 
 	get center() {
@@ -245,8 +436,12 @@ class Polygon {
 			const p = this.points[(i+1)%this.points.length];
 			ctx.lineTo(p.x, p.y);
 		}
+		ctx.fillStyle = this.fillStyle;
+		ctx.fill();
 		ctx.stroke();
-		const c = this.center;
-		ctx.fillText(this.id, c.x-5, c.y+5); 
+		if (showPolyId) {
+			const c = this.center;
+			ctx.fillText(this.id, c.x-5, c.y+5); 
+		}
 	}
 }
