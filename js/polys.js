@@ -1,7 +1,7 @@
 
 import {shuffle} from './util.js';
 import {Point, clonePoint, add, sub, mul, rotate, nearby, nearbyScalar, dist} from './primitives.js';
-export {Edge, Polygon, getNewPolyPointsFromExisting, getNewPolyPointsFromEdge, createPolyFromPointsAndIntegrate, cullEdgesAndPolysNearVertex, automaticallyGrow};
+export {Edge, Polygon, getNewPolyPointsFromExisting, getNewPolyPointsFromEdge, createPolyFromPointsAndIntegrate, cullEdgesAndPolysNearVertex, automaticallyGrow, initNeighbors, markConnectedComponent, makeOminos};
 
 function automaticallyGrow(globPolys, globEdges) {
 	if (globEdges.length == 1 && globPolys.length == 0) {
@@ -384,6 +384,8 @@ class Polygon {
 			polyIdCount++;
 		}
 		this.fillStyle = getRandomFill();
+		// Built later on in init process see initNeighbors
+		this.neighbors = [];
 	}
 
 	get center() {
@@ -429,7 +431,8 @@ class Polygon {
 		return false;
 	}
 
-	draw(ctx, showPolyId) {
+	// Fixed is true when the poly is in the correct place and so the edges are highlighted
+	draw(ctx, showPolyId, fixed) {
 		ctx.beginPath();
 		ctx.moveTo(this.points[0].x, this.points[0].y);
 		for (let i=0; i<this.points.length; i++) {
@@ -438,6 +441,13 @@ class Polygon {
 		}
 		ctx.fillStyle = this.fillStyle;
 		ctx.fill();
+		if (fixed) {
+			ctx.lineWidth = 2;
+			ctx.strokeStyle = 'black';
+		} else {
+			ctx.lineWidth = 1;
+			ctx.strokeStyle = '#555';
+		}
 		ctx.stroke();
 		if (showPolyId) {
 			const c = this.center;
@@ -445,3 +455,191 @@ class Polygon {
 		}
 	}
 }
+
+// Create links from each poly to its neighbors
+function initNeighbors(edges) {
+	for (let i=0; i<edges.length; i++) {
+		const p1 = edges[i].polys[0];
+		const p2 = edges[i].polys[1];
+		if (!p2) continue;
+		// Not sure if this can ever happen...
+		if (!p1.neighbors.includes(p2)) p1.neighbors.push(p2);
+		if (!p2.neighbors.includes(p1)) p2.neighbors.push(p1);
+	}
+}
+
+// Requires initNeighbors to have been run
+function markConnectedComponent(polys) {
+	// Mark all not visited
+	for (let i=0; i<polys.length; i++) {
+		polys[i].marked = false;
+	}
+	polys[0].marked = true;
+	let frontier = [polys[0]];
+	while (frontier.length > 0) {
+		const newFrontier = [];
+		for (let i=0; i<frontier.length; i++) {
+			const poly = frontier[i];
+			for (let j=0; j<poly.neighbors.length; j++) {
+				const otherPoly = poly.neighbors[j];
+				if (otherPoly.marked) {
+					continue;
+				}
+				otherPoly.marked = true;
+				newFrontier.push(otherPoly);
+			}
+		}
+		frontier = newFrontier;
+	}
+}
+
+// Requires initNeighbors to have been run
+function makeOminos(polys) {
+	const nOminos = Math.floor(polys.length / 5);
+	const ominos = [];
+	const shuffledPolys = polys.slice();
+	shuffle(shuffledPolys);
+	for (let i=0; i<nOminos; i++) {
+		ominos.push(new Omino(shuffledPolys[i]));
+	}
+	const polys2 = shuffledPolys.slice(nOminos);
+	// Should never happen
+	let iterLeft = 20;
+	while (polys2.length > 0 && iterLeft > 0) {
+		for (let i=0; i<ominos.length; i++) {
+			for (let j=0; j<polys2.length; j++) {
+				if (ominos[i].connected(polys2[j])) {
+					ominos[i].add(polys2[j]);
+					polys2.splice(j, 1);
+					break;
+				}
+			}
+		}
+		iterLeft--;
+	}
+	// Each omino should have at least three polygons
+	for (let i=0; i<ominos.length; i++) {
+		if (ominos[i].polys.length < 3) {
+			return [];
+		}
+	}
+	return ominos;
+}
+
+class Omino {
+	constructor(poly) {
+		this.polys = [poly];
+		this.fillStyle = getRandomFill();
+		poly.fillStyle = this.fillStyle;
+	}
+
+	add(poly) {
+		this.polys.push(poly);
+		poly.fillStyle = this.fillStyle;
+	}
+
+	get center() {
+		let c = Point(0,0);
+		for (let i=0; i<this.polys.length; i++) {
+			c = add(c, mul(this.polys[i].center, 1/this.polys.length));
+		}
+		return c;
+	}
+
+	connected(poly) {
+		for (let i=0; i<this.polys.length; i++) {
+			const mine = this.polys[i];
+			if (poly.neighbors.includes(mine)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	contains(p) {
+		for (let i=0; i<this.polys.length; i++) {
+			if (this.polys[i].contains(p)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	draw(ctx) {
+		for (let i=0; i<this.polys.length; i++) {
+			this.polys[i].draw(ctx, null, this.fixed);
+		}
+	}
+
+	mouseDown(p) {
+		if (this.contains(p)) {
+			this.from = p;
+			return true;
+		}
+		return false;
+	}
+
+	mouseUp() {
+		this.from = null;
+	}
+
+	mouseMove(p) {
+		if (this.fixed || !this.from) {
+			return;
+		}
+		const delta = sub(p, this.from);
+		for (let i=0; i<this.polys.length; i++) {
+			const poly = this.polys[i];
+			for (let j=0; j<poly.points.length; j++) {
+				poly.points[j] = add(delta, poly.points[j]);
+			}
+		}
+		// Check solved and snap into place
+		if (nearby(this.savedCenter, this.center, 5)) {
+			const delta = sub(this.savedCenter, this.center);
+			for (let i=0; i<this.polys.length; i++) {
+				const poly = this.polys[i];
+				for (let j=0; j<poly.points.length; j++) {
+					poly.points[j] = add(delta, poly.points[j]);
+				}
+			}
+			this.fixed = true;
+		}
+		this.from = p;
+	}
+
+	save() {
+		this.savedCenter = this.center;
+	}
+}
+
+/*function connected(p1, p2, polys) {
+	if (p1 == p2) {
+		return true;
+	}
+	// Mark not visited
+	for (let i=0; i<polys.length; i++) {
+		polys[i].visited = false;
+	}
+	p1.visited = true;
+	let frontier = [p1];
+	while (frontier.length > 0) {
+		const newFrontier = [];
+		for (let i=0; i<frontier.length; i++) {
+			const poly = frontier[i];
+			for (let j=0; j<poly.neighbors.length; j++) {
+				const otherPoly = poly.neighbors[j];
+				if (otherPoly.visited) {
+					continue;
+				}
+				if (otherPoly == p2) {
+					return true;
+				}
+				otherPoly.visited = true;
+				newFrontier.push(otherPoly);
+			}
+		}
+		frontier = newFrontier;
+	}
+	return false;
+}*/
