@@ -10,3 +10,7 @@ canvas {
 	display: inline-block;
 	padding-left: 10px;
 }
+
+.pointer {
+	cursor: pointer;
+}

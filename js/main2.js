@@ -6,6 +6,17 @@ import {Edge, automaticallyGrow, createPolyFromPointsAndIntegrate,
 window.addEventListener('load', e => {
 	const canvas = $('#canvas');
 
+	let numLoaded = 0;
+	const NUM_TO_LOAD = 10;
+	const PLAY_WIDTH = canvas.width-400;
+	const EDGE_WIDTH = 50;
+	const NUM_GROWS = 200;
+	const boards = [];
+	let globPolys = [];
+	let globEdges = [];
+	let ominos = [];
+	let hovering = false;
+
 	canvas.addEventListener('mousedown', e => {
 		const p = Point(e.offsetX, e.offsetY);
 		// Order of drawing should be the same as z order of clicking
@@ -24,12 +35,21 @@ window.addEventListener('load', e => {
 		for (let i=0; i<ominos.length; i++) {
 			ominos[i].mouseUp();
 		}
+		// Hovering over reload button
+		const p = Point(e.offsetX, e.offsetY);
+		if (p.x > PLAY_WIDTH + 110 && p.x < PLAY_WIDTH + 310 && p.y > 500 && p.y < 580) {
+			numLoaded = 0;
+			boards = [];
+			ominos = [];
+		}
 	});
 
 	canvas.addEventListener('mouseout', e => {
 		for (let i=0; i<ominos.length; i++) {
 			ominos[i].mouseUp();
 		}
+		hovering = false;
+		canvas.classList.remove('pointer');
 	});
 
 	canvas.addEventListener('mousemove', e => {
@@ -37,17 +57,15 @@ window.addEventListener('load', e => {
 		for (let i=0; i<ominos.length; i++) {
 			ominos[i].mouseMove(p);
 		}
+		// Hovering over reload button
+		if (p.x > PLAY_WIDTH + 110 && p.x < PLAY_WIDTH + 310 && p.y > 500 && p.y < 580) {
+			hovering = true;
+			canvas.classList.add('pointer');
+		} else {
+			hovering = false;
+			canvas.classList.remove('pointer');
+		}
 	});
-
-	let numLoaded = 0;
-	const NUM_TO_LOAD = 10;
-	const PLAY_WIDTH = canvas.width-400;
-	const EDGE_WIDTH = 50;
-	const NUM_GROWS = 200;
-	const boards = [];
-	let globPolys = [];
-	let globEdges = [];
-	let ominos = [];
 
 	function drawLoading(num, total) {
 		const ctx = canvas.getContext('2d');
@@ -97,6 +115,7 @@ window.addEventListener('load', e => {
 				}
 				boards.push({polys, edges});
 				numLoaded++;
+				globPolys = [];
 			} else if (globPolys.length == 0) {
 				// Choose biggest board
 				boards.sort((a,b) => a.polys.length < b.polys.length);
@@ -178,7 +197,7 @@ window.addEventListener('load', e => {
 							const c = ominos[i].center;
 							const to = Point(
 								PLAY_WIDTH + 50 + Math.random()*(canvas.width - PLAY_WIDTH - 100),
-								200 + Math.random()*(canvas.height - 300));
+								150 + Math.random()*(canvas.height - 300));
 							// hacky move
 							ominos[i].from = c;
 							ominos[i].mouseMove(to);
@@ -186,6 +205,7 @@ window.addEventListener('load', e => {
 						}
 					}
 				}
+				console.log('here');
 			}
 			lastts = ts;
 			repaint();
@@ -202,10 +222,25 @@ window.addEventListener('load', e => {
 		} else {
 			ctx.strokeStyle = 'black';
 			ctx.lineWidth = 1;
+
+			ctx.fillStyle = '#eee';
+			ctx.fillRect(PLAY_WIDTH, 0, canvas.width-PLAY_WIDTH, canvas.height);
+
 			ctx.beginPath();
 			ctx.moveTo(PLAY_WIDTH, 0);
 			ctx.lineTo(PLAY_WIDTH, canvas.height);
 			ctx.stroke();
+			
+			/*for (let i=0; i<globPolys.length; i++) {
+				globPolys[i].draw(ctx);
+			}*/
+			for (let i=0; i<ominos.length; i++) {
+				ominos[i].draw(ctx);
+			}
+
+			ctx.fillStyle = '#fab';
+			ctx.fillRect(PLAY_WIDTH, 0, canvas.width-PLAY_WIDTH, 80);
+			ctx.strokeRect(PLAY_WIDTH, 0, canvas.width-PLAY_WIDTH, 80);
 
 			drawText(ctx, 
 				'Drag Ominos',
@@ -215,11 +250,43 @@ window.addEventListener('load', e => {
 				null,
 				null);
 
-			/*for (let i=0; i<globPolys.length; i++) {
-				globPolys[i].draw(ctx);
-			}*/
+
+			// Reload button
+			ctx.fillStyle = hovering ? 'white' : '#88f';
+			ctx.fillRect(PLAY_WIDTH + 120, 500, 180, 80);
+			ctx.lineWidth = 2;
+			ctx.strokeStyle = 'black';
+			ctx.strokeRect(PLAY_WIDTH + 120, 500, 180, 80);
+
+			drawText(ctx, 
+				'Reload', 
+				{x: PLAY_WIDTH + 210, y: 555},
+				hovering ? '#88f' : 'white',
+				'42px sans',
+				null,
+				null);
+
+			// Victory screen
+			let vic = true;
 			for (let i=0; i<ominos.length; i++) {
-				ominos[i].draw(ctx);
+				if (!ominos[i].fixed) {
+					vic = false;
+					break;
+				}
+			}
+			if (vic) {
+				ctx.globalAlpha = 0.2;
+				ctx.fillStyle = '#000';
+				ctx.fillRect(0, 250, canvas.width, 100);
+				ctx.globalAlpha = 1;
+
+				drawText(ctx,
+					'Congratulations! You solved it.',
+					{x: canvas.width/2, y: 320},
+					'white',
+					'48px sans',
+					true,
+					null);
 			}
 		}
 	}
