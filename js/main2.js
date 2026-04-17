@@ -42,9 +42,33 @@ window.addEventListener('load', e => {
 		ctx: canvas.getContext('2d')
 	});
 
+	const stopMusic = new Button({
+		text: 'Stop Music',
+		center: Point(PLAY_WIDTH+120, 543),
+		font: '32px sans',
+		color: '#88f',
+		padding: 10,
+		clickFn: _ => {
+			if (stopMusic.text == 'Stop Music') {
+				sounds.stopMusic('theme');
+				stopMusic.text = 'Play Music';
+			} else {
+				sounds.playMusic('theme');
+				stopMusic.text = 'Stop Music';
+			}
+		},
+		hoverFn: _ => {
+			canvas.classList.add('pointer');
+		},
+		stopHoverFn: _ => {
+			canvas.classList.remove('pointer');
+		},
+		ctx: canvas.getContext('2d')
+	});
+
 	const reloadButton = new Button({
 		text: 'Reload', 
-		center: Point(PLAY_WIDTH+200, 555),
+		center: Point(PLAY_WIDTH+300, 550),
 		font: '42px sans',
 		color: '#88f',
 		padding: 10,
@@ -98,6 +122,7 @@ window.addEventListener('load', e => {
 			ominos = [];
 		}*/
 		reloadButton.click(p);
+		stopMusic.click(p);
 		startButton.click(p);
 	});
 
@@ -108,6 +133,7 @@ window.addEventListener('load', e => {
 		/*hovering = false;
 		canvas.classList.remove('pointer');*/
 		reloadButton.mouseOut();
+		stopMusic.mouseOut();
 		startButton.mouseOut();
 	});
 
@@ -125,6 +151,7 @@ window.addEventListener('load', e => {
 			canvas.classList.remove('pointer');
 		}*/
 		if (started) reloadButton.mouseMove(p);
+		if (started) stopMusic.mouseMove(p);
 		if (!started) startButton.mouseMove(p);
 	});
 
@@ -329,6 +356,7 @@ window.addEventListener('load', e => {
 				null,
 				null);
 
+			stopMusic.draw(ctx);
 			reloadButton.draw(ctx);
 			
 			for (let i=0; i<ominos.length; i++) {
