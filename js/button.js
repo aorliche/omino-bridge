@@ -82,16 +82,16 @@ class Button {
 				this.hoverFn();
 			}
 		} else {
-			this.hover = false;
-			if (this.stopHoverFn) {
+			if (this.hover && this.stopHoverFn) {
 				this.stopHoverFn();
 			}
+			this.hover = false;
 		}
 	}
 
 	mouseOut() {
 		this.hover = false;
-		if (this.stopHoverFn) {
+		if (this.hover && this.stopHoverFn) {
 			this.stopHoverFn();
 		}
 	}
