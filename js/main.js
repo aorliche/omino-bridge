@@ -138,8 +138,11 @@ window.addEventListener('load', e => {
 				}
 			} else if (!initialized) {
 				boards.sort((a,b) => a.polys.length < b.polys.length);
+				// Get a good looking board for a picture
+				polys = boards[0].polys;
+				edges = boards[0].edges;
 				// Get a random subset of polys
-				const initPolys = boards[0].polys;
+				/*const initPolys = boards[0].polys;
 				const ids = [];
 				polys = [];
 				edges = [];
@@ -166,7 +169,7 @@ window.addEventListener('load', e => {
 					if (i++ >= 100) {
 						break;
 					}
-				}
+				}*/
 				initialized = true;
 			}
 			lastts = ts;

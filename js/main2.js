@@ -2,6 +2,9 @@ import {$, $$, drawText} from './util.js';
 import {Point, dist} from './primitives.js';
 import {Edge, automaticallyGrow, createPolyFromPointsAndIntegrate, 
 	initNeighbors, markConnectedComponent, makeOminos} from './polys.js';
+import {Button} from './button.js';
+import {arrange} from './arrange.js';
+import {Sounds} from './sounds.js';
 
 window.addEventListener('load', e => {
 	const canvas = $('#canvas');
@@ -12,10 +15,61 @@ window.addEventListener('load', e => {
 	const EDGE_WIDTH = 50;
 	const NUM_GROWS = 200;
 	const boards = [];
+	const sounds = new Sounds();
 	let globPolys = [];
 	let globEdges = [];
 	let ominos = [];
-	let hovering = false;
+	//let hovering = false;
+	let started = false;
+
+	const startButton = new Button({
+		text: 'Click to Begin',
+		center: Point(canvas.width/2, 300),
+		font: '64px sans',
+		color: '#88f',
+		padding: 15,
+		clickFn: _ => {
+			started = true;
+			sounds.loadMusic('theme', 'sounds/theme.mp3');
+			sounds.playMusic('theme');
+		},
+		hoverFn: _ => {
+			canvas.classList.add('pointer');
+		},
+		stopHoverFn: _ => {
+			canvas.classList.remove('pointer');
+		},
+		ctx: canvas.getContext('2d')
+	});
+
+	const reloadButton = new Button({
+		text: 'Reload', 
+		center: Point(PLAY_WIDTH+200, 555),
+		font: '42px sans',
+		color: '#88f',
+		padding: 10,
+		clickFn: _ => {
+			numLoaded = 0;
+			boards = [];
+			ominos = [];
+		},
+		hoverFn: _ => {
+			canvas.classList.add('pointer');
+		},
+		stopHoverFn: _ => {
+			canvas.classList.remove('pointer');
+		},
+		ctx: canvas.getContext('2d')
+	});
+
+	// Splash image
+	const splash = new Image();
+	let splashLoaded = false;
+
+	splash.src = 'images/splash_exposed.png';
+	splash.addEventListener('load', _ => {
+		splashLoaded = true;
+	});
 
 	canvas.addEventListener('mousedown', e => {
 		const p = Point(e.offsetX, e.offsetY);
@@ -37,19 +91,24 @@ window.addEventListener('load', e => {
 		}
 		// Hovering over reload button
 		const p = Point(e.offsetX, e.offsetY);
+		/*
 		if (p.x > PLAY_WIDTH + 110 && p.x < PLAY_WIDTH + 310 && p.y > 500 && p.y < 580) {
 			numLoaded = 0;
 			boards = [];
 			ominos = [];
-		}
+		}*/
+		reloadButton.click(p);
+		startButton.click(p);
 	});
 
 	canvas.addEventListener('mouseout', e => {
 		for (let i=0; i<ominos.length; i++) {
 			ominos[i].mouseUp();
 		}
-		hovering = false;
-		canvas.classList.remove('pointer');
+		/*hovering = false;
+		canvas.classList.remove('pointer');*/
+		reloadButton.mouseOut();
+		startButton.mouseOut();
 	});
 
 	canvas.addEventListener('mousemove', e => {
@@ -58,13 +117,15 @@ window.addEventListener('load', e => {
 			ominos[i].mouseMove(p);
 		}
 		// Hovering over reload button
-		if (p.x > PLAY_WIDTH + 110 && p.x < PLAY_WIDTH + 310 && p.y > 500 && p.y < 580) {
+		/*if (p.x > PLAY_WIDTH + 110 && p.x < PLAY_WIDTH + 310 && p.y > 500 && p.y < 580) {
 			hovering = true;
 			canvas.classList.add('pointer');
 		} else {
 			hovering = false;
 			canvas.classList.remove('pointer');
-		}
+		}*/
+		if (started) reloadButton.mouseMove(p);
+		if (!started) startButton.mouseMove(p);
 	});
 
 	function drawLoading(num, total) {
@@ -96,120 +157,140 @@ window.addEventListener('load', e => {
 			lastts = ts;
 			repaint();
 		} else if (ts - lastts > 1000/30) {
-			if (numLoaded < NUM_TO_LOAD) {
-				const polys = [];
-				const edges = [];
-				let failed = false;
-				// Primordial edge
-				edges.push(new Edge(
-					Point(PLAY_WIDTH/2-EDGE_WIDTH/2, canvas.height/2), 
-					Point(PLAY_WIDTH/2+EDGE_WIDTH/2, canvas.height/2)));
-				// Fixed grow cycles even with backtracking
-				for (let i=0; i<NUM_GROWS && !failed; i++) {
-					try {
-						automaticallyGrow(polys, edges);
-					} catch (e) {
-						failed = true;
-						break;
-					}
-				}
-				boards.push({polys, edges});
-				numLoaded++;
-				globPolys = [];
-			} else if (globPolys.length == 0) {
-				// Choose biggest board
-				boards.sort((a,b) => a.polys.length < b.polys.length);
-				const polys = boards[0].polys;
-				// Construct new polys board
-				globPolys = [];
-				globEdges = [];
-				for (let i=0; i<polys.length; i++) {
-					// Cull polys with points outside playing area
-					let cull = false;
-					const points = polys[i].points;
-					for (let j=0; j<points.length; j++) {
-						const point = points[j];
-						if (point.x < 20 
-							|| point.x > PLAY_WIDTH-20
-							|| point.y < 20
-							|| point.y > canvas.height-20) {
-							cull = true;
+			if (started) {
+				if (numLoaded < NUM_TO_LOAD) {
+					const polys = [];
+					const edges = [];
+					let failed = false;
+					// Primordial edge
+					edges.push(new Edge(
+						Point(PLAY_WIDTH/2-EDGE_WIDTH/2, canvas.height/2), 
+						Point(PLAY_WIDTH/2+EDGE_WIDTH/2, canvas.height/2)));
+					// Fixed grow cycles even with backtracking
+					for (let i=0; i<NUM_GROWS && !failed; i++) {
+						try {
+							automaticallyGrow(polys, edges);
+						} catch (e) {
+							failed = true;
 							break;
 						}
 					}
-					if (cull) {
-						continue;
+					boards.push({polys, edges});
+					numLoaded++;
+					globPolys = [];
+				} else if (globPolys.length == 0) {
+					// Choose biggest board
+					boards.sort((a,b) => a.polys.length < b.polys.length);
+					const polys = boards[0].polys;
+					// Construct new polys board
+					globPolys = [];
+					globEdges = [];
+					for (let i=0; i<polys.length; i++) {
+						// Cull polys with points outside playing area
+						let cull = false;
+						const points = polys[i].points;
+						for (let j=0; j<points.length; j++) {
+							const point = points[j];
+							if (point.x < 20 
+								|| point.x > PLAY_WIDTH-20
+								|| point.y < 20
+								|| point.y > canvas.height-20) {
+								cull = true;
+								break;
+							}
+						}
+						if (cull) {
+							continue;
+						}
+						const succ = createPolyFromPointsAndIntegrate(points, null, globPolys, globEdges);
+						if (!succ) {
+							console.log("Failed copy poly");
+							continue;
+						}
 					}
-					const succ = createPolyFromPointsAndIntegrate(points, null, globPolys, globEdges);
-					if (!succ) {
-						console.log("Failed copy poly");
-						continue;
+					// Probabilistic check connectedness
+					// We sometimes have it when dodecagons getting culled leaves triangles
+					// and squares stranded
+					initNeighbors(globEdges);
+					markConnectedComponent(globPolys);
+					for (let i=0; i<globPolys.length; i++) {
+						if (!globPolys[i].marked) {
+							// Redo on next frame
+							console.log('Disconnected');
+							boards.splice(0, 1);
+							globPolys = [];
+						}
 					}
-				}
-				// Probabilistic check connectedness
-				// We sometimes have it when dodecagons getting culled leaves triangles
-				// and squares stranded
-				initNeighbors(globEdges);
-				markConnectedComponent(globPolys);
-				for (let i=0; i<globPolys.length; i++) {
-					if (!globPolys[i].marked) {
-						// Redo on next frame
-						console.log('Disconnected');
-						boards.splice(0, 1);
-						globPolys = [];
-					}
-				}
-				// Check that we didn't do a disconnected redo in the previous step
-				if (globPolys.length > 0) {
-					// Make ominos get lots of chance since it's probabilistic
-					ominos = [];
-					for (let i=0; i<20 && ominos.length == 0; i++) {
-						ominos = makeOminos(globPolys);
-					}
-					// Another retry for failure
-					if (ominos.length === 0) {
-						boards.splice(0, 1);
-						globPolys = [];
-					} else {
-						// Get the ominos with the greatest distance between them
-						let idx1 = 0;
-						let idx2 = 1;
-						let d = 0;
-						for (let i=0; i<ominos.length; i++) {
-							// Save center
-							ominos[i].save();
-							for (let j=i+1; j<ominos.length; j++) {
-								const dd = dist(ominos[i].center, ominos[j].center);
-								if (dd > d) {
-									idx1 = i;
-									idx2 = j;
-									d = dd;
+					// Check that we didn't do a disconnected redo in the previous step
+					if (globPolys.length > 0) {
+						// Make ominos get lots of chance since it's probabilistic
+						ominos = [];
+						for (let i=0; i<20 && ominos.length == 0; i++) {
+							ominos = makeOminos(globPolys);
+						}
+						// Another retry for failure
+						if (ominos.length === 0) {
+							boards.splice(0, 1);
+							globPolys = [];
+						} else {
+							// Get the ominos with the greatest distance between them
+							let idx1 = 0;
+							let idx2 = 1;
+							let d = 0;
+							for (let i=0; i<ominos.length; i++) {
+								// Save center
+								ominos[i].save();
+								for (let j=i+1; j<ominos.length; j++) {
+									const dd = dist(ominos[i].center, ominos[j].center);
+									if (dd > d) {
+										idx1 = i;
+										idx2 = j;
+										d = dd;
+									}
 								}
 							}
-						}
-						ominos[idx1].fixed = true;
-						ominos[idx2].fixed = true;
-						// Move unfixed ominos into the drag ominos holding area
-						for (let i=0; i<ominos.length; i++) {
-							if (ominos[i].fixed) {
-								continue;
+							ominos[idx1].fixed = true;
+							ominos[idx2].fixed = true;
+							// Move unfixed ominos into the drag ominos holding area
+							const toArrange = [];
+							for (let i=0; i<ominos.length; i++) {
+								if (ominos[i].fixed) {
+									continue;
+								}
+
+								const j = i%4;
+								const k = Math.floor(i/4);
+								const to = Point(
+									PLAY_WIDTH + 65 + j*(canvas.width - PLAY_WIDTH - 50)/4,
+									180 + k*(canvas.height - 300)/4);
+
+								ominos[i].from = ominos[i].center;
+								ominos[i].mouseMove(to);
+								ominos[i].from = null;
+
+								toArrange.push(ominos[i]);
+								/*const c = ominos[i].center;
+								const to = Point(
+									PLAY_WIDTH + 50 + Math.random()*(canvas.width - PLAY_WIDTH - 100),
+									150 + Math.random()*(canvas.height - 300));
+								// hacky move
+								ominos[i].from = c;
+								ominos[i].mouseMove(to);
+								ominos[i].from = null;*/
 							}
-							const c = ominos[i].center;
-							const to = Point(
-								PLAY_WIDTH + 50 + Math.random()*(canvas.width - PLAY_WIDTH - 100),
-								150 + Math.random()*(canvas.height - 300));
-							// hacky move
-							ominos[i].from = c;
-							ominos[i].mouseMove(to);
-							ominos[i].from = null;
+							// Repulsion
+							arrange(toArrange, 
+								PLAY_WIDTH + 50, 
+								canvas.width - 50, 
+								100, 
+								canvas.height - 100);
 						}
 					}
 				}
-				console.log('here');
 			}
 			lastts = ts;
 			repaint();
-		}
+		} 
 		requestAnimationFrame(animate);
 	}
 
@@ -217,7 +298,12 @@ window.addEventListener('load', e => {
 		const ctx = canvas.getContext('2d');
 		ctx.fillStyle = 'white';
 		ctx.fillRect(0, 0, canvas.width, canvas.height);
-		if (numLoaded < NUM_TO_LOAD) {
+		if (!started) {
+			if (splashLoaded) {
+				ctx.drawImage(splash, 0, 0);
+			}
+			startButton.draw(ctx);
+		} else if (numLoaded < NUM_TO_LOAD) {
 			drawLoading(numLoaded, NUM_TO_LOAD);
 		} else {
 			ctx.strokeStyle = 'black';
@@ -231,13 +317,6 @@ window.addEventListener('load', e => {
 			ctx.lineTo(PLAY_WIDTH, canvas.height);
 			ctx.stroke();
 			
-			/*for (let i=0; i<globPolys.length; i++) {
-				globPolys[i].draw(ctx);
-			}*/
-			for (let i=0; i<ominos.length; i++) {
-				ominos[i].draw(ctx);
-			}
-
 			ctx.fillStyle = '#fab';
 			ctx.fillRect(PLAY_WIDTH, 0, canvas.width-PLAY_WIDTH, 80);
 			ctx.strokeRect(PLAY_WIDTH, 0, canvas.width-PLAY_WIDTH, 80);
@@ -250,9 +329,14 @@ window.addEventListener('load', e => {
 				null,
 				null);
 
+			reloadButton.draw(ctx);
+			
+			for (let i=0; i<ominos.length; i++) {
+				ominos[i].draw(ctx);
+			}
 
 			// Reload button
-			ctx.fillStyle = hovering ? 'white' : '#88f';
+			/*ctx.fillStyle = hovering ? 'white' : '#88f';
 			ctx.fillRect(PLAY_WIDTH + 120, 500, 180, 80);
 			ctx.lineWidth = 2;
 			ctx.strokeStyle = 'black';
@@ -264,7 +348,7 @@ window.addEventListener('load', e => {
 				hovering ? '#88f' : 'white',
 				'42px sans',
 				null,
-				null);
+				null);*/
 
 			// Victory screen
 			let vic = true;
